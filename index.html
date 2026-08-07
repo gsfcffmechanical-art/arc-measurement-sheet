@@ -5154,34 +5154,31 @@ function setOpenSheetListStatus(msg){
   if (el) el.textContent = msg;
 }
 
+// Reads the live list of Plant/Department + Work Month combinations straight
+// from the Apps Script backend's own Data sheet (via the listOptions action),
+// so this always matches whatever has actually been saved through Save/Submit -
+// no dependency on a separate hardcoded spreadsheet ID/tab staying in sync.
 async function loadOpenSheetOptions(){
   setOpenSheetListStatus('Loading Plant/Department and Work Month options…');
-  let opts = null;
-  let jsonpError = null;
+  if (!CLOUD_SYNC_URL){
+    setOpenSheetListStatus('Cloud sync is not configured (CLOUD_SYNC_URL is empty)');
+    return false;
+  }
   try{
-    const rows = await loadOpenSheetRowsViaJsonp();
-    opts = openSheetOptionsFromJsonpRows(rows);
+    const res = await fetch(CLOUD_SYNC_URL + '?action=listOptions', { cache: 'no-store' });
+    const data = await res.json();
+    if (!data || !data.ok) throw new Error((data && data.error) || ('HTTP ' + res.status));
+
+    populateSelect('ld_plantDept', data.departments || [], 'Select Plant/Department…');
+    populateSelect('ld_workMonth', data.months || [], 'Select Work Month…');
+    setOpenSheetListStatus((data.departments || []).length + ' department(s), ' + (data.months || []).length + ' month(s) found ' + formatTimestamp(new Date().toISOString()));
+    return true;
   }catch(e){
-    jsonpError = e;
-    console.warn('JSONP load failed for open-sheet options, trying CSV fetch fallback', e);
+    console.error('Failed to load open-sheet options from Apps Script', e);
+    setOpenSheetListStatus('Could not load options from the server - see console for details');
+    toast('Plant/Department + Work Month list failed to load. Check your connection.', 'err');
+    return false;
   }
-
-  if (!opts){
-    try{
-      const text = await fetchOpenSheetOptionsCsv();
-      opts = openSheetOptionsFromCsvText(text);
-    }catch(e2){
-      console.error('Failed to load open-sheet options (both JSONP and CSV fetch failed)', jsonpError, e2);
-      setOpenSheetListStatus('Could not load options from the Google Sheet - see console for details');
-      toast('Plant/Department + Work Month list failed to load from the Google Sheet. Check your connection.', 'err');
-      return false;
-    }
-  }
-
-  populateSelect('ld_plantDept', opts.plants, 'Select Plant/Department…');
-  populateSelect('ld_workMonth', opts.months, 'Select Work Month…');
-  setOpenSheetListStatus(opts.plants.length + ' department(s), ' + opts.months.length + ' month(s) found ' + formatTimestamp(new Date().toISOString()));
-  return true;
 }
 
 document.getElementById('btnRefreshOpenSheetOptions').addEventListener('click', () => loadOpenSheetOptions());
