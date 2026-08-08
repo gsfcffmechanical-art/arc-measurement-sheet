@@ -5158,6 +5158,8 @@ function setOpenSheetListStatus(msg){
 // from the Apps Script backend's own Data sheet (via the listOptions action),
 // so this always matches whatever has actually been saved through Save/Submit -
 // no dependency on a separate hardcoded spreadsheet ID/tab staying in sync.
+let openSheetCombos = []; // [{d: plantDept, m: workMonth}, ...] - real saved pairs only
+
 async function loadOpenSheetOptions(){
   setOpenSheetListStatus('Loading Plant/Department and Work Month options…');
   if (!CLOUD_SYNC_URL){
@@ -5169,6 +5171,7 @@ async function loadOpenSheetOptions(){
     const data = await res.json();
     if (!data || !data.ok) throw new Error((data && data.error) || ('HTTP ' + res.status));
 
+    openSheetCombos = data.combos || [];
     populateSelect('ld_plantDept', data.departments || [], 'Select Plant/Department…');
     populateSelect('ld_workMonth', data.months || [], 'Select Work Month…');
     setOpenSheetListStatus((data.departments || []).length + ' department(s), ' + (data.months || []).length + ' month(s) found ' + formatTimestamp(new Date().toISOString()));
@@ -5180,6 +5183,35 @@ async function loadOpenSheetOptions(){
     return false;
   }
 }
+
+// Keeps the two dropdowns cascading off *actual saved pairs* (openSheetCombos)
+// instead of independent unique lists, so a user can never pick a Plant/Dept +
+// Work Month combination that was never really saved together (which used to
+// look like real data going missing, when really it just never existed as a pair).
+function refreshOpenSheetCascade(changedId){
+  if (!openSheetCombos.length) return;
+  const deptSel = document.getElementById('ld_plantDept');
+  const monthSel = document.getElementById('ld_workMonth');
+  const curDept = deptSel.value;
+  const curMonth = monthSel.value;
+
+  if (changedId !== 'ld_workMonth'){
+    const validMonths = curDept
+      ? [...new Set(openSheetCombos.filter(c => c.d === curDept).map(c => c.m))].sort()
+      : [...new Set(openSheetCombos.map(c => c.m))].sort();
+    populateSelect('ld_workMonth', validMonths, 'Select Work Month…');
+    if (curMonth && validMonths.indexOf(curMonth) !== -1) monthSel.value = curMonth;
+  }
+  if (changedId !== 'ld_plantDept'){
+    const validDepts = curMonth
+      ? [...new Set(openSheetCombos.filter(c => c.m === curMonth).map(c => c.d))].sort()
+      : [...new Set(openSheetCombos.map(c => c.d))].sort();
+    populateSelect('ld_plantDept', validDepts, 'Select Plant/Department…');
+    if (curDept && validDepts.indexOf(curDept) !== -1) deptSel.value = curDept;
+  }
+}
+document.getElementById('ld_plantDept').addEventListener('change', () => refreshOpenSheetCascade('ld_plantDept'));
+document.getElementById('ld_workMonth').addEventListener('change', () => refreshOpenSheetCascade('ld_workMonth'));
 
 document.getElementById('btnRefreshOpenSheetOptions').addEventListener('click', () => loadOpenSheetOptions());
 
