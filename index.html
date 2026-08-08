@@ -4491,6 +4491,10 @@ async function fetchSheetFromCloud(plantDept, workMonth){
     const res = await fetch(url, { method: 'GET' });
     const data = await res.json();
     if (!data || !data.ok) throw new Error((data && data.error) || 'Unknown error from Apps Script');
+    // The Apps Script response has no 'found' field of its own - derive it
+    // here from whether it actually returned any rows. This is the one true
+    // signal that the sheet genuinely exists in the shared Google Sheet.
+    data.found = !!(data.rows && data.rows.length);
     return data;
   }catch(e){
     console.warn('Cloud fetch failed', e);
